@@ -1,14 +1,14 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UniRx;
 using UnityEngine;
 using UnityEngine.UI;
-using UniRx;
 
 namespace InfiniteScrollView
 {
-    [RequireComponent(typeof(ScrollRect))]
-    public class InfiniteScrollView : MonoBehaviour, IDisposable
+    public class InfiniteScrollViewWithIf : MonoBehaviour, IDisposable
     {
         /// <summary>
         /// prefab同士のSpace
@@ -24,7 +24,7 @@ namespace InfiniteScrollView
         /// topのマージン
         /// </summary>
         [SerializeField] private float _topMargin;
-        
+
         /// <summary>
         /// bottomのマージン
         /// </summary>
@@ -33,7 +33,7 @@ namespace InfiniteScrollView
         /// <summary>
         /// アイテムのベース
         /// </summary>
-        [SerializeField] private InfiniteScrollBaseItemView _baseItemView;
+        [SerializeField] private GameObject _itemGO;
 
         [SerializeField] private RectTransform _contentRectTransform;
 
@@ -41,6 +41,7 @@ namespace InfiniteScrollView
         /// InstantiateしたPrefabの数
         /// </summary>
         private int _prefabCount => _views.Count;
+
         private ScrollRect _scrollRect;
         private bool _isInitialized;
         private int _dataLength;
@@ -49,25 +50,25 @@ namespace InfiniteScrollView
         private int _maxPrefabCount;
         private float _viewPortAreaSize;
         private Vector2 _bufferScrollBarPosition;
-        private readonly List<InfiniteScrollBaseItemView> _views = new();
+        private readonly List<IInfiniteScrollItem> _views = new();
         private readonly Dictionary<int, IDisposable> _disposables = new();
-        private readonly Subject<InfiniteScrollBaseItemView> _updateItemSubject = new();
+        private readonly Subject<IInfiniteScrollItem> _updateItemSubject = new();
         private readonly Subject<Edge> _reachedEdge = new();
         private readonly Subject<int> _clickedItem = new();
 
-        public IObservable<InfiniteScrollBaseItemView> OnUpdateItemEvent => _updateItemSubject;
+        public IObservable<IInfiniteScrollItem> OnUpdateItemEvent => _updateItemSubject;
         public IObservable<Edge> OnReachedEdge => _reachedEdge;
         public IObservable<int> OnClickedItem => _clickedItem;
 
         public void Setup(
             int dataLength,
-            Action<InfiniteScrollBaseItemView> instantiateCompleted
+            Action<IInfiniteScrollItem> instantiateCompleted
         )
         {
             _dataLength = dataLength;
             if(!_isInitialized) Initialize();
             var instantiateViewCount = _dataLength >= _maxPrefabCount ? _maxPrefabCount - _prefabCount : _dataLength - _prefabCount;
-
+        
             //Prefabを任意数生成
             for (var i = 0; i < instantiateViewCount; i++)
             {
@@ -91,28 +92,7 @@ namespace InfiniteScrollView
             
             ResizeScrollArea(_dataLength);
         }
-
-        public void ResizeItem(int dataLength)
-        {
-            if (dataLength > _dataLength && _prefabCount < _maxPrefabCount)
-            {
-                var diff = _maxPrefabCount - _prefabCount;
-                for (var i = 0; i < diff; i++)
-                {
-                    var lastView = _views.Last();
-                    var view = InstantiateItemView();
-                    SetBottomPosition(view.RectTransform, lastView.RectTransform);
-                    view.UpdateDataIndex(lastView.DataIndex + 1);
-                }
-            }
-            
-            _dataLength = dataLength;
-
-            Render();
-
-            ResizeScrollArea(_dataLength);
-        }
-
+        
         /// <summary>
         /// 選択したIndexを上辺合わせするように描画
         /// </summary>
@@ -240,13 +220,28 @@ namespace InfiniteScrollView
                 else view.Deactivate();
             }
         }
-
-        public void Dispose()
+        
+        public void ResizeItem(int dataLength)
         {
-            foreach (var disposable in _disposables.Values)
-                disposable.Dispose();
-        }
+            if (dataLength > _dataLength && _prefabCount < _maxPrefabCount)
+            {
+                var diff = _maxPrefabCount - _prefabCount;
+                for (var i = 0; i < diff; i++)
+                {
+                    var lastView = _views.Last();
+                    var view = InstantiateItemView();
+                    SetBottomPosition(view.RectTransform, lastView.RectTransform);
+                    view.UpdateDataIndex(lastView.DataIndex + 1);
+                }
+            }
+            
+            _dataLength = dataLength;
 
+            Render();
+
+            ResizeScrollArea(_dataLength);
+        }
+        
         /// <summary>
         /// 初期配置・データにリセット
         /// </summary>
@@ -255,19 +250,24 @@ namespace InfiniteScrollView
             InitializePrefabs();
             Render();
         }
+
+        public void Dispose()
+        {
+            foreach (var disposable in _disposables.Values) disposable.Dispose();
+        }
         
         private void Initialize()
         {
             _scrollRect = GetComponent<ScrollRect>();
-            
+            var item = _itemGO.GetComponent<IInfiniteScrollItem>() ?? throw new InvalidOperationException("Interfaceを継承してください");
             switch (_direction)
             {
                 case Direction.Horizontal:
-                    _itemSize = _baseItemView.Width;
+                    _itemSize = item.Width;
                     _viewPortAreaSize = _scrollRect.viewport.rect.width;
                     break;
                 case Direction.Vertical:
-                    _itemSize = _baseItemView.Height;
+                    _itemSize = item.Height;
                     _viewPortAreaSize = _scrollRect.viewport.rect.height;
                     break;
                 default:
@@ -279,7 +279,28 @@ namespace InfiniteScrollView
             
             _scrollRect.onValueChanged.AddListener(UpdateItem);
         }
+        
+        private IInfiniteScrollItem InstantiateItemView()
+        {
+            if (_prefabCount > _maxPrefabCount) throw new InvalidOperationException("最大生成数を超えています");
+            
+            var go = Instantiate(_itemGO, _contentRectTransform);
+            var view = go.GetComponent<IInfiniteScrollItem>() ?? throw new InvalidOperationException("interfaceを継承していません");
+            
+            view.RectTransform.anchorMin = new Vector2(0.5f, 1);
+            view.RectTransform.anchorMax = new Vector2(0.5f, 1);
+            view.RectTransform.pivot = _direction switch
+            {
+                Direction.Horizontal => new Vector2(0, 0.5f),
+                Direction.Vertical => new Vector2(0.5f, 1),
+                _ => throw new ArgumentOutOfRangeException(),
+            };
+            _disposables.Add(go.GetInstanceID(), view.OnClickedButton().Subscribe(x => _clickedItem.OnNext(view.DataIndex)));
+            _views.Add(view);
 
+            return view;
+        }
+        
         /// <summary>
         /// ScrollArea, Prefab, DataIndexを初期化
         /// </summary>
@@ -315,30 +336,65 @@ namespace InfiniteScrollView
         }
         
         /// <summary>
-        /// Prefabを生成する
+        /// Prefabを一番下のPositionに移動させる
         /// </summary>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
+        /// <param name="targetRectTransform"></param>
+        /// <param name="currentBottomRectTransform"></param>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
-        private InfiniteScrollBaseItemView InstantiateItemView()
+        private void SetBottomPosition(RectTransform targetRectTransform, RectTransform currentBottomRectTransform)
         {
-            if (_prefabCount > _maxPrefabCount) throw new InvalidOperationException("最大生成数を超えています");
-            
-            var view = Instantiate(_baseItemView, _contentRectTransform);
-
-            view.RectTransform.anchorMin = new Vector2(0.5f, 1);
-            view.RectTransform.anchorMax = new Vector2(0.5f, 1);
-            view.RectTransform.pivot = _direction switch
+            var anchoredPosition = currentBottomRectTransform.anchoredPosition;
+            targetRectTransform.anchoredPosition = _direction switch
             {
-                Direction.Horizontal => new Vector2(0, 0.5f),
-                Direction.Vertical => new Vector2(0.5f, 1),
-                _ => throw new ArgumentOutOfRangeException(),
+                Direction.Horizontal => new Vector2(
+                    anchoredPosition.x - (_itemSize + _spacing),
+                    0
+                ),
+                Direction.Vertical => new Vector2(
+                    0,
+                    anchoredPosition.y - (_itemSize + _spacing)
+                ),
+                _ => throw new ArgumentOutOfRangeException()
             };
-            _disposables.Add(view.gameObject.GetInstanceID(), view.OnClickedButton.Subscribe(x => _clickedItem.OnNext(view.DataIndex)));
-            _views.Add(view);
-
-            return view;
         }
+
+        /// <summary>
+        /// Prefabを一番上のPositionに移動させる
+        /// </summary>
+        /// <param name="targetRectTransform"></param>
+        /// <param name="currentBottomRectTransform"></param>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        private void SetTopPosition(RectTransform targetRectTransform, RectTransform currentBottomRectTransform)
+        {
+            var anchoredPosition = currentBottomRectTransform.anchoredPosition;
+            targetRectTransform.anchoredPosition = _direction switch
+            {
+                Direction.Horizontal => new Vector2(
+                    anchoredPosition.x + (_itemSize + _spacing),
+                    0
+                ),
+                Direction.Vertical => new Vector2(
+                    0,
+                    anchoredPosition.y + (_itemSize + _spacing)
+                ),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
+        /// <summary>
+        /// PrefabのIndexから適切なPositionを返す
+        /// 上辺起点
+        /// </summary>
+        /// <param name="index"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        private Vector2 CalcPositionWithIndex(int index) =>
+            _direction switch
+            {
+                Direction.Vertical => new Vector2(0, -(_topMargin + (_itemSize + _spacing) * index)),
+                Direction.Horizontal => new Vector2(-(_topMargin + (_itemSize + _spacing) * index), 0),
+                _ => throw new ArgumentOutOfRangeException()
+            };
 
         /// <summary>
         /// ScrollViewのサイズを調整する
@@ -363,13 +419,7 @@ namespace InfiniteScrollView
                 _ => throw new ArgumentOutOfRangeException(),
             };
         }
-
-        /// <summary>
-        /// ScrollRectのOnValueChangedにバインドして
-        /// スクロールされたら自動でPrefabを適切な更新をする
-        /// </summary>
-        /// <param name="scrollBar"></param>
-        /// <exception cref="ArgumentException"></exception>
+        
         private void UpdateItem(Vector2 scrollBar)
         {
             if(_prefabCount == 0) return;
@@ -438,7 +488,7 @@ namespace InfiniteScrollView
             DetectEdge(scrollBar);
             _bufferScrollBarPosition = scrollBar;
         }
-
+        
         /// <summary>
         /// 末端に位置がきたことのイベントを発火する
         /// </summary>
@@ -474,68 +524,7 @@ namespace InfiniteScrollView
                     throw new ArgumentOutOfRangeException();
             }
         }
-
-        /// <summary>
-        /// Prefabを一番下のPositionに移動させる
-        /// </summary>
-        /// <param name="targetRectTransform"></param>
-        /// <param name="currentBottomRectTransform"></param>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        private void SetBottomPosition(RectTransform targetRectTransform, RectTransform currentBottomRectTransform)
-        {
-            var anchoredPosition = currentBottomRectTransform.anchoredPosition;
-            targetRectTransform.anchoredPosition = _direction switch
-            {
-                Direction.Horizontal => new Vector2(
-                    anchoredPosition.x - (_itemSize + _spacing),
-                    0
-                ),
-                Direction.Vertical => new Vector2(
-                    0,
-                    anchoredPosition.y - (_itemSize + _spacing)
-                ),
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-
-        /// <summary>
-        /// Prefabを一番上のPositionに移動させる
-        /// </summary>
-        /// <param name="targetRectTransform"></param>
-        /// <param name="currentBottomRectTransform"></param>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        private void SetTopPosition(RectTransform targetRectTransform, RectTransform currentBottomRectTransform)
-        {
-            var anchoredPosition = currentBottomRectTransform.anchoredPosition;
-            targetRectTransform.anchoredPosition = _direction switch
-            {
-                Direction.Horizontal => new Vector2(
-                    anchoredPosition.x + (_itemSize + _spacing),
-                    0
-                ),
-                Direction.Vertical => new Vector2(
-                    0,
-                    anchoredPosition.y + (_itemSize + _spacing)
-                ),
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-
-        /// <summary>
-        /// PrefabのIndexから適切なPositionを返す
-        /// 上辺起点
-        /// </summary>
-        /// <param name="index"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        private Vector2 CalcPositionWithIndex(int index) =>
-            _direction switch
-            {
-                Direction.Vertical => new Vector2(0, -(_topMargin + (_itemSize + _spacing) * index)),
-                Direction.Horizontal => new Vector2(-(_topMargin + (_itemSize + _spacing) * index), 0),
-                _ => throw new ArgumentOutOfRangeException()
-            };
-
+        
         /// <summary>
         /// ViewAreaの場所を計算して上辺と被っているPrefabの表示されるべきDataIndexを返す
         /// </summary>

@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 namespace InfiniteScrollView
 {
-    public class Test : MonoBehaviour
+    public class Test1 : MonoBehaviour
     {
         [SerializeField] private InfiniteScrollView _infiniteScrollView;
         [SerializeField] private Button _addDataButton;
@@ -82,12 +82,6 @@ namespace InfiniteScrollView
                 var index = int.Parse(_inputField3.text);
                 _infiniteScrollView.RedrawBottomWithSelectedIndex(index);
             });
-        }
-
-        // Update is called once per frame
-        void Update()
-        {
-        
         }
     }
 }

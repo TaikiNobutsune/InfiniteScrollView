@@ -13,7 +13,7 @@ namespace InfiniteScrollView
         public float Height => RectTransform.rect.height;
         public float Width => RectTransform.rect.width;
         public abstract bool IsUpdated { get; protected set; }
-        public IObservable<Unit> OnClickedButton => _button.OnClickAsObservable();
+        public IObservable<int> OnClickedButton => _button.OnClickAsObservable().Select(_ => DataIndex);
 
         /// <summary>
         /// 表示しているデータの配列のIndex
@@ -23,6 +23,7 @@ namespace InfiniteScrollView
 
         /// <summary>
         /// Itemの表示更新
+        /// IsUpdatedをTrueに
         /// </summary>
         public abstract void UpdateItem<T>(T data);
 
