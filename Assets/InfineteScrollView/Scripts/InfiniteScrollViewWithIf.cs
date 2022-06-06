@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UniRx;
@@ -8,6 +7,7 @@ using UnityEngine.UI;
 
 namespace InfiniteScrollView
 {
+    [RequireComponent(typeof(ScrollRect))]
     public class InfiniteScrollViewWithIf : MonoBehaviour, IDisposable
     {
         /// <summary>
