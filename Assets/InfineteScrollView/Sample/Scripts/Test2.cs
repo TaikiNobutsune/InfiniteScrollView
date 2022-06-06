@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UniRx;
@@ -19,17 +20,31 @@ namespace InfiniteScrollView
         [SerializeField] private Button _adjustCenterButton;
         [SerializeField] private InputField _inputField3;
         [SerializeField] private Button _adjustBottomButton;
+        [SerializeField] private Button _switchData;
+
+        private readonly List<SampleData> _incrementNumberData = new();
+        private readonly List<SampleData> _minusNumberData = new();
+
+        private List<SampleData> _data => _flag switch
+        {
+            true => _incrementNumberData,
+            false => _minusNumberData,
+        };
+        private bool _flag = true;
 
         void Start()
         {
-            var data = new List<SampleData>();
-
             for (int i = 0; i < 100; i++)
-                data.Add(new SampleData(i));
+            {
+                _incrementNumberData.Add(new SampleData(i));
+                if (i < 10) _minusNumberData.Add(new SampleData(-i));
+            }
 
-            _infiniteScrollView.Setup(data.Count, view => { view.UpdateItem(data[view.DataIndex]); });
 
-            _infiniteScrollView.OnUpdateItemEvent.Subscribe(x => { x.UpdateItem(data[x.DataIndex]); });
+            _infiniteScrollView.Setup(_data.Count, view => { view.UpdateItem(_data[view.DataIndex]); });
+            
+
+            _infiniteScrollView.OnUpdateItemEvent.Subscribe(x => { x.UpdateItem(_data[x.DataIndex]); });
 
             _infiniteScrollView.OnReachedEdge.Subscribe(x => Debug.Log(x));
 
@@ -39,19 +54,19 @@ namespace InfiniteScrollView
             {
                 for (int i = 0; i < 10; i++)
                 {
-                    var lastNumber = data.Last().Number;
-                    data.Add(new SampleData(lastNumber + 1));
+                    var lastNumber = _data.Last().Number;
+                    _data.Add(new SampleData(lastNumber + 1));
                 }
 
-                _infiniteScrollView.ResizeItem(data.Count);
+                _infiniteScrollView.ResizeItem(_data.Count);
             });
 
             _removeDataButton.OnClickAsObservable().Subscribe(_ =>
             {
                 var removeIndex = int.Parse(_inputField.text);
-                var index = data.FindIndex(x => x.Number == removeIndex);
-                if (index >= 0) data.RemoveAt(index);
-                _infiniteScrollView.ResizeItem(data.Count);
+                var index = _data.FindIndex(x => x.Number == removeIndex);
+                if (index >= 0) _data.RemoveAt(index);
+                _infiniteScrollView.ResizeItem(_data.Count);
             });
 
             _resetButton.OnClickAsObservable().Subscribe(_ => { _infiniteScrollView.ResetItem(); });
@@ -72,6 +87,12 @@ namespace InfiniteScrollView
             {
                 var index = int.Parse(_inputField3.text);
                 _infiniteScrollView.RedrawBottomWithSelectedIndex(index);
+            });
+
+            _switchData.OnClickAsObservable().Subscribe(_ =>
+            {
+                _flag = !_flag;
+                _infiniteScrollView.Setup(_data.Count);
             });
         }
     }

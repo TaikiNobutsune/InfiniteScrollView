@@ -59,9 +59,15 @@ namespace InfiniteScrollView
         public IObservable<Edge> OnReachedEdge => _reachedEdge;
         public IObservable<int> OnClickedItem => _clickedItem;
 
+        /// <summary>
+        /// 必ず最初に呼ぶ
+        /// ActionはEventがBindされていない場合用
+        /// </summary>
+        /// <param name="dataLength"></param>
+        /// <param name="instantiateCompleted"></param>
         public void Setup(
             int dataLength,
-            Action<InfiniteScrollBaseItemView> instantiateCompleted
+            Action<InfiniteScrollBaseItemView> instantiateCompleted = null
         )
         {
             _dataLength = dataLength;
@@ -90,6 +96,8 @@ namespace InfiniteScrollView
                 }
             
             ResizeScrollArea(_dataLength);
+
+            _isInitialized = true;
         }
 
         public void ResizeItem(int dataLength)
@@ -276,7 +284,6 @@ namespace InfiniteScrollView
             
             _maxVisibleItemCount = (int)Math.Ceiling(_viewPortAreaSize / (_itemSize + _spacing)) + 2;
             _maxPrefabCount = _maxVisibleItemCount + 5;
-            
             _scrollRect.onValueChanged.AddListener(UpdateItem);
         }
 
