@@ -51,56 +51,41 @@ namespace InfiniteScrollView
         private Vector2 _bufferScrollBarPosition;
         private readonly List<InfiniteScrollBaseItemView> _views = new();
         private readonly Dictionary<int, IDisposable> _disposables = new();
-        private readonly Subject<InfiniteScrollBaseItemView> _updateItemSubject = new();
+        private readonly ReplaySubject<InfiniteScrollBaseItemView> _updateItemSubject = new();
         private readonly Subject<Edge> _reachedEdge = new();
         private readonly Subject<int> _clickedItem = new();
 
+        //必ず一度しか呼ばない
         public IObservable<InfiniteScrollBaseItemView> OnUpdateItemEvent => _updateItemSubject;
         public IObservable<Edge> OnReachedEdge => _reachedEdge;
         public IObservable<int> OnClickedItem => _clickedItem;
 
         /// <summary>
         /// 必ず最初に呼ぶ
-        /// ActionはEventがBindされていない場合用
+        /// 役割 : DataLengthを調整・ScrollAreaを初期化
+        /// ActionはEventがBindされていない場合のため
         /// </summary>
         /// <param name="dataLength"></param>
         /// <param name="instantiateCompleted"></param>
-        public void Setup(
-            int dataLength,
-            Action<InfiniteScrollBaseItemView> instantiateCompleted = null
-        )
+        public void Setup(int dataLength)
         {
             _dataLength = dataLength;
             if(!_isInitialized) Initialize();
-            var instantiateViewCount = _dataLength >= _maxPrefabCount ? _maxPrefabCount - _prefabCount : _dataLength - _prefabCount;
-
+            
             //Prefabを任意数生成
-            for (var i = 0; i < instantiateViewCount; i++)
-            {
-                var view =　InstantiateItemView();
-            }
-            
-            InitializePrefabs();
-            
-            if(_isInitialized) Render();
-            else
-                for (var i = 0; i < _prefabCount; i++)
-                {
-                    var view = _views[i];
-                    if (i < _maxVisibleItemCount && view.DataIndex >= 0 && view.DataIndex < _dataLength)
-                    {
-                        instantiateCompleted.Invoke(view);
-                        view.Activate();
-                    }
-                    else view.Deactivate();
-                }
-            
-            ResizeScrollArea(_dataLength);
+            var instantiateViewCount = _dataLength >= _maxPrefabCount ? _maxPrefabCount - _prefabCount : _dataLength - _prefabCount;
+            for (var i = 0; i < instantiateViewCount; i++) InstantiateItemView();
 
-            _isInitialized = true;
+            //Prefab・ContentsAreaを初期配置
+            InitializePrefabs();
+            //Prefabを適切なDataに描画更新
+            UpdateAllItem();
+            //DataLengthに合わせたScrollAreaに更新
+            ResizeScrollArea(_dataLength);
         }
 
-        public void ResizeItem(int dataLength)
+        
+        public void ResizeData(int dataLength)
         {
             if (dataLength > _dataLength && _prefabCount < _maxPrefabCount)
             {
@@ -116,7 +101,7 @@ namespace InfiniteScrollView
             
             _dataLength = dataLength;
 
-            Render();
+            UpdateAllItem();
 
             ResizeScrollArea(_dataLength);
         }
@@ -149,7 +134,7 @@ namespace InfiniteScrollView
                 dataIndex++;
             }
             
-            Render();
+            UpdateAllItem();
             
             _contentRectTransform.anchoredPosition = _direction switch
             {
@@ -185,7 +170,7 @@ namespace InfiniteScrollView
                 topIndex++;
             }
             
-            Render();
+            UpdateAllItem();
 
             _contentRectTransform.anchoredPosition = _direction switch
             {
@@ -222,7 +207,7 @@ namespace InfiniteScrollView
                 topIndex++;
             }
             
-            Render();
+            UpdateAllItem();
 
             _contentRectTransform.anchoredPosition = _direction switch
             {
@@ -235,7 +220,7 @@ namespace InfiniteScrollView
         /// <summary>
         /// Prefab全ての描画処理・表示、非表示をする
         /// </summary>
-        public void Render()
+        public void UpdateAllItem()
         {
             for (var i = 0; i < _prefabCount; i++)
             {
@@ -258,10 +243,10 @@ namespace InfiniteScrollView
         /// <summary>
         /// 初期配置・データにリセット
         /// </summary>
-        public void ResetItem()
+        public void ReLayout()
         {
             InitializePrefabs();
-            Render();
+            UpdateAllItem();
         }
         
         private void Initialize()
@@ -285,6 +270,7 @@ namespace InfiniteScrollView
             _maxVisibleItemCount = (int)Math.Ceiling(_viewPortAreaSize / (_itemSize + _spacing)) + 2;
             _maxPrefabCount = _maxVisibleItemCount + 5;
             _scrollRect.onValueChanged.AddListener(UpdateItem);
+            _isInitialized = true;
         }
 
         /// <summary>

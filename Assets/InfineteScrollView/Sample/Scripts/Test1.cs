@@ -39,9 +39,7 @@ namespace InfiniteScrollView
                 if (i < 10) _minusNumberData.Add(new SampleData(-i));
             }
 
-
-            _infiniteScrollView.Setup(_data.Count, view => { view.UpdateItem(_data[view.DataIndex]); });
-            
+            _infiniteScrollView.Setup(_data.Count);
 
             _infiniteScrollView.OnUpdateItemEvent.Subscribe(x => { x.UpdateItem(_data[x.DataIndex]); });
 
@@ -57,7 +55,7 @@ namespace InfiniteScrollView
                     _data.Add(new SampleData(lastNumber + 1));
                 }
 
-                _infiniteScrollView.ResizeItem(_data.Count);
+                _infiniteScrollView.ResizeData(_data.Count);
             });
 
             _removeDataButton.OnClickAsObservable().Subscribe(_ =>
@@ -65,10 +63,10 @@ namespace InfiniteScrollView
                 var removeIndex = int.Parse(_inputField.text);
                 var index = _data.FindIndex(x => x.Number == removeIndex);
                 if (index >= 0) _data.RemoveAt(index);
-                _infiniteScrollView.ResizeItem(_data.Count);
+                _infiniteScrollView.ResizeData(_data.Count);
             });
 
-            _resetButton.OnClickAsObservable().Subscribe(_ => { _infiniteScrollView.ResetItem(); });
+            _resetButton.OnClickAsObservable().Subscribe(_ => { _infiniteScrollView.ReLayout(); });
 
             _adjustTopButton.OnClickAsObservable().Subscribe(_ =>
             {
